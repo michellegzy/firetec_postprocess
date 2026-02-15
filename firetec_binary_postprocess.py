@@ -296,7 +296,15 @@ def total_fuel_consumption(comp_out_initial, comp_out_final, Nx, Ny, Nz, Nzfuel,
     
     return rho_fuel_initial1, rho_fuel_initial2, rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption
 
-def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2, rhoFuel_1, rhoFuel_2, rhof0, rho_water1, rho_water2, ftemp1, ftemp2): 
+def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2, rhoFuel_1, rhoFuel_2, rho_water1, rho_water2, ftemp1, ftemp2): 
+    """
+    Compute fuel consumption rate and chemical heat release.
+    Works on arrays (entire grid at z=0).
+    
+    Returns:
+    - frhof1, frhof2: fuel consumption rates [kg/m³/s]
+    - reactFuelGas1, reactFuelGas2: heat release rate to gas [W/m³]
+    """
     # cts
     rnfuel      = 0.4552
     rno         = 0.5448
@@ -309,56 +317,47 @@ def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2,
     c1          = 0.5
     c2          = 0.0079
     c3          = 1. 
-    hf          = 8913.48e3   # heat of reaction for simple wood  (J/Kg of products)
-    thetag      = 0.75 # E -> gas 
+    hf          = 8913.48e3   # heat of reaction for simple wood (J/kg of products)
+    thetag      = 0.75        # fraction of energy to gas 
 
-    # turb mixing 
+    # turbulent mixing
     fcorr = 0.5
-    rkctemp = 0.2*tkb*fcorr # deleted /rho since div_by_dens is called first
-    sigmac = sc*0.5*math.sqrt(rkctemp)
+    rkctemp = 0.2 * tkb * fcorr
+    sigmac = sc * 0.5 * np.sqrt(np.maximum(rkctemp, 0))  # ensure non-negative
 
-    # flame heat, reaction extent, and length correlations
-    if(ftemp1<tfstep): 
-        psif1 = 0.
-    elif(ftemp1 > (2.*(tcrit-tfstep)+tfstep)):
-        psif1 = 1.
-    else:
-        psif1 = c1*(c3+math.erf(c2*(ftemp1-tcrit))) 
-
-    if(ftemp2<tfstep): 
-        psif2 = 0.
-    elif(ftemp2 > (2.*(tcrit-tfstep)+tfstep)):
-        psif2 = 1.
-    else:
-        psif2 = c1*(c3+math.erf(c2*(ftemp2-tcrit)))
-
-    percHydroRemaining1 = max(0.,(rhoFuel_1-hydroThresh*rho_fuel_initial1)/(rho_fuel_initial1*(1.-hydroThresh)))
-    percHydroRemaining2 = max(0.,(rhoFuel_2-hydroThresh*rho_fuel_initial2)/(rho_fuel_initial2*(1.-hydroThresh)))
-    cf1 = cfhydro*percHydroRemaining1+cfchar*(1.-percHydroRemaining1) 
-    cf2 = cfhydro*percHydroRemaining2+cfchar*(1.-percHydroRemaining2) 
-
-    # fuel consumption
-    slambdaof1 = rhoFuel_1*O2/(rhoFuel_1/rnfuel+O2/rno)**2.
-    slambdaof2 = rhoFuel_2*O2/(rhoFuel_2/rnfuel+O2/rno)**2.
-
-    frhof1 = rnfuel*cf1*rhoFuel_1*O2*sigmac*psif1*slambdaof1/(100.*0.0005**2.) 
-    frhof2 = rnfuel*cf2*rhoFuel_2*O2*sigmac*psif2*slambdaof2/(100.*0.0005**2.) 
+    # flame heat, reaction extent 
+    psif1 = np.where(ftemp1 < tfstep, 0.0,
+                     np.where(ftemp1 > (2.*(tcrit - tfstep) + tfstep), 1.0,
+                              c1 * (c3 + np.vectorize(math.erf)(c2 * (ftemp1 - tcrit)))))
     
-    # energy to gas release 
-    if nfuel == 1:
-        hydroFactor=math.exp(-rno/rnfuel*psif1*rhoFuel)/O2 
-        thetaSolid1=percHydroRemaining1*(1.-thetag)*hydroFactor1 +(1.-percHydroRemaining1)*thetag 
-        reactFuelGas=(1.-thetaSolid)*hf*frhof
+    psif2 = np.where(ftemp2 < tfstep, 0.0,
+                     np.where(ftemp2 > (2.*(tcrit - tfstep) + tfstep), 1.0,
+                              c1 * (c3 + np.vectorize(math.erf)(c2 * (ftemp2 - tcrit)))))
 
-    elif nfuel == 2:
-        hydroFactor1=math.exp(-rno/rnfuel*psif1*rhoFuel_1)/O2 
-        hydroFactor2=math.exp(-rno/rnfuel*psif2*rhoFuel_2)/O2
+    percHydroRemaining1 = np.maximum(0., (rhoFuel_1 - hydroThresh * rho_fuel_initial1) / 
+                                     (rho_fuel_initial1 * (1. - hydroThresh) + 1e-10))
+    percHydroRemaining2 = np.maximum(0., (rhoFuel_2 - hydroThresh * rho_fuel_initial2) / 
+                                     (rho_fuel_initial2 * (1. - hydroThresh) + 1e-10))
+    
+    cf1 = cfhydro * percHydroRemaining1 + cfchar * (1. - percHydroRemaining1) 
+    cf2 = cfhydro * percHydroRemaining2 + cfchar * (1. - percHydroRemaining2) 
 
-        thetaSolid1=percHydroRemaining1*(1.-thetag)*hydroFactor1 +(1.-percHydroRemaining1)*thetag 
-        thetaSolid2=percHydroRemaining2*(1.-thetag)*hydroFactor2 +(1.-percHydroRemaining2)*thetag
+    # fuel consumption rate
+    slambdaof1 = rhoFuel_1 * O2 / (rhoFuel_1 / rnfuel + O2 / rno + 1e-10)**2.
+    slambdaof2 = rhoFuel_2 * O2 / (rhoFuel_2 / rnfuel + O2 / rno + 1e-10)**2.
 
-        reactFuelGas1=(1.-thetaSolid1)*hf*frhof1
-        reactFuelGas2=(1.-thetaSolid2)*hf*frhof2
+    frhof1 = rnfuel * cf1 * rhoFuel_1 * O2 * sigmac * psif1 * slambdaof1 / (100. * 0.0005**2.) 
+    frhof2 = rnfuel * cf2 * rhoFuel_2 * O2 * sigmac * psif2 * slambdaof2 / (100. * 0.0005**2.) 
+    
+    # energy release to gas 
+    hydroFactor1 = np.exp(-rno / rnfuel * psif1 * rhoFuel_1 / (O2 + 1e-10))
+    hydroFactor2 = np.exp(-rno / rnfuel * psif2 * rhoFuel_2 / (O2 + 1e-10))
+
+    thetaSolid1 = percHydroRemaining1 * (1. - thetag) * hydroFactor1 + (1. - percHydroRemaining1) * thetag 
+    thetaSolid2 = percHydroRemaining2 * (1. - thetag) * hydroFactor2 + (1. - percHydroRemaining2) * thetag
+
+    reactFuelGas1 = (1. - thetaSolid1) * hf * frhof1  # [W/m³]
+    reactFuelGas2 = (1. - thetaSolid2) * hf * frhof2  # [W/m³]
 
     return frhof1, frhof2, reactFuelGas1, reactFuelGas2
 
@@ -412,55 +411,93 @@ def fire_spread(point_data, Nx, Ny, dx, initial_fuel_density, time, previous_pos
 
     return fire_front_x, spread_rate
 
-def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, reactFuelGas1, reactFuelGas2):
+def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1, rho_fuel_initial2):
     """
-    Compute total heat flux for z=0 across the grid,
-    returning the total for current timestep. ** ftemp arrays as 2-D arrays.
+    Compute total heat flux for z=0 across the grid.
+    Includes convective, radiative, and chemical reaction heat.
+    
+    Returns:
+    - qdub_total: total heat flux [W]
+    - ftemp1, ftemp2: fuel temperatures (for tracking)
     """
-
     qdub_total = 0.0
+    ftemp1_out = None
+    ftemp2_out = None
 
     if nfuel == 1:
-        # 2-D arrays at z=0
+        # Extract 2-D arrays at z=0
         sies = point_data['sies'][:, :, 0]
+        rhoFuel = point_data['rhoFuel'][:, :, 0]
+        rho_water = point_data['rho_water'][:, :, 0]
+        
         ftemp = sies / cp_solid1
         ftemp = np.maximum(ftemp, 300.0) 
+        ftemp1_out = ftemp
 
-        # mask where flames are “active”
+        # mask where flames are "active"
         mask = ftemp >= 315.0
 
+        # convective and radiative heat flux
         q_conv = h * (ftemp - T_inf)
         q_rad  = epsilon * sigma * (ftemp**4 - T_inf**4)
-        qdub_total = np.sum((q_conv + q_rad)[mask])
-
-        # if you want to inspect as arrays:
-        # print("ftemp shape:", ftemp.shape, "qdub_total:", qdub_total)
+        
+        # get turbulence and O2
+        tkb = point_data.get('kb', np.zeros_like(ftemp))[:, :, 0]
+        O2 = point_data.get('O2', 0.23 * np.ones_like(ftemp))[:, :, 0]
+        
+        # reaction heat
+        _, _, reactFuelGas, _ = consumption_and_reaction_heat(
+            tkb, O2, rho_fuel_initial1, 0, 
+            rhoFuel, np.zeros_like(rhoFuel),
+            rho_water, np.zeros_like(rho_water),
+            ftemp, np.zeros_like(ftemp)
+        )
+        
+        # total heat release (sum over active cells)
+        qdub_total = np.sum((q_conv + q_rad + reactFuelGas)[mask])
 
     elif nfuel == 2:
+        # extract 2-D arrays at z=0
         sies1 = point_data['sies1'][:, :, 0]
         sies2 = point_data['sies2'][:, :, 0]
+        rhoFuel_1 = point_data['rhoFuel_1'][:, :, 0]
+        rhoFuel_2 = point_data['rhoFuel_2'][:, :, 0]
+        rho_water1 = point_data['rho_water1'][:, :, 0]
+        rho_water2 = point_data['rho_water2'][:, :, 0]
 
         ftemp1 = np.maximum(sies1 / cp_solid1, 300.0)
         ftemp2 = np.maximum(sies2 / cp_solid2, 300.0)
+        ftemp1_out = ftemp1
+        ftemp2_out = ftemp2
 
         mask1 = ftemp1 >= 315.0
         mask2 = ftemp2 >= 315.0
 
+        # heat flux
         q_conv1 = h * (ftemp1 - T_inf)
         q_rad1  = epsilon * sigma * (ftemp1**4 - T_inf**4)
-
         q_conv2 = h * (ftemp2 - T_inf)
         q_rad2  = epsilon * sigma * (ftemp2**4 - T_inf**4)
 
-        qdub_total = np.sum((q_conv1 + q_rad1)[mask1]) + np.sum((q_conv2 + q_rad2)[mask2]) #!#!#!#!#!##!!#!#! reactFuelGas1, reactFuelGas2 add in reaction heat
-
-        # optional debugging
-        # print("ftemp1 shape:", ftemp1.shape, "ftemp2 shape:", ftemp2.shape)
+        tkb = point_data.get('kb', np.zeros_like(ftemp1))[:, :, 0]
+        O2 = point_data.get('O2', 0.23 * np.ones_like(ftemp1))[:, :, 0]
+        
+        # reaction heat
+        _, _, reactFuelGas1, reactFuelGas2 = consumption_and_reaction_heat(
+            tkb, O2, rho_fuel_initial1, rho_fuel_initial2,
+            rhoFuel_1, rhoFuel_2,
+            rho_water1, rho_water2,
+            ftemp1, ftemp2
+        )
+        
+        # total heat release
+        qdub_total = (np.sum((q_conv1 + q_rad1 + reactFuelGas1)[mask1]) + 
+                      np.sum((q_conv2 + q_rad2 + reactFuelGas2)[mask2]))
 
     else:
         raise ValueError("nfuel must be 1 or 2")
 
-    return qdub_total
+    return qdub_total, ftemp1_out, ftemp2_out
 
 def flame_depth(point_data, Nx, Ny, fire_front_x, dx):
     """
@@ -559,7 +596,16 @@ XI, YI, ZI, volume = metrics(topofile, Nx, Ny, Nz, dx, dy, dz, aa1, f0, stretch)
 # point_data.update(read_fields(fname, Nx, Ny, Nz, Nzfuel, initial, gas_field_names, fuel_field_names, div_by_dens)) 
 
 # compute initial fuel density before entering loop
-rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = total_fuel_consumption(
+# rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = total_fuel_consumption(
+#     "./comp.out.1000",
+#     "./comp.out.120000",
+#     Nx, Ny, Nz, Nzfuel,
+#     gas_field_names,
+#     fuel_field_names,
+#     div_by_dens
+# ) 
+
+rho_fuel_initial1, rho_fuel_initial2, rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = total_fuel_consumption(
     "./comp.out.1000",
     "./comp.out.120000",
     Nx, Ny, Nz, Nzfuel,
@@ -647,6 +693,21 @@ flame_maps = []
 flame_counts = []
 flame_depths = []
         
+# for i in range(initial, final, incr): 
+#     filename = fname+str(i)
+#     vtsfile = outdir+outname+str(i)
+#     if not os.path.exists(filename):
+#         continue  # skip missing files
+    
+#     f = open(filename, 'rb')
+#     point_data.update(read_fields(fname, Nx, Ny, Nz, Nzfuel, i, gas_field_names, fuel_field_names, div_by_dens))
+#     timestep_qdub = heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel) #  ftemp1,ftemp2
+#     if nfuel == 1: 
+#         ftemp += ftemp
+#     if nfuel == 2:
+#         ftemp1 += ftemp1 
+#         ftemp2 += ftemp2 
+
 for i in range(initial, final, incr): 
     filename = fname+str(i)
     vtsfile = outdir+outname+str(i)
@@ -655,13 +716,22 @@ for i in range(initial, final, incr):
     
     f = open(filename, 'rb')
     point_data.update(read_fields(fname, Nx, Ny, Nz, Nzfuel, i, gas_field_names, fuel_field_names, div_by_dens))
-    timestep_qdub = heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel) #  ftemp1,ftemp2
-    if nfuel == 1: 
-        ftemp += ftemp
-    if nfuel == 2:
-        ftemp1 += ftemp1 
-        ftemp2 += ftemp2 
     
+    # compute heat flux with reaction heat
+    timestep_qdub, ftemp_1, ftemp_2 = heat_flux(
+        point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, 
+        rho_fuel_initial1, rho_fuel_initial2
+    )
+    qdub.append(timestep_qdub)  # store heat flux value
+    
+    if nfuel == 1 and ftemp_1 is not None: 
+        ftemp.append(np.max(ftemp_1))  # store max temp
+    if nfuel == 2:
+        if ftemp_1 is not None:
+            ftemp1.append(np.max(ftemp_1))
+        if ftemp_2 is not None:
+            ftemp2.append(np.max(ftemp_2))
+
     #if os.path.isfile(vtsfile+'.vts'): # remove old vts' 
      #   os.remove(vtsfile+'.vts')
         
