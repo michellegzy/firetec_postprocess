@@ -1,5 +1,5 @@
 #!/usr/bin/python
-from pyevtk.hl import gridToVTK
+# from pyevtk.hl import gridToVTK
 import numpy as np
 import struct
 import os.path
@@ -260,7 +260,7 @@ def total_fuel_consumption(comp_out_initial, comp_out_final, Nx, Ny, Nz, Nzfuel,
     sums them to get total fuel density at initial and final steps,
     and computes the correct ratio (final/initial).
     """
-    # ensure both files exist
+    # check both files exist
     if not os.path.exists(comp_out_initial) or not os.path.exists(comp_out_final):
         raise FileNotFoundError("one or both of the specified 'comp.out' not found in cwd/filepath.")
 
@@ -323,7 +323,7 @@ def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2,
     # turbulent mixing
     fcorr = 0.5
     rkctemp = 0.2 * tkb * fcorr
-    sigmac = sc * 0.5 * np.sqrt(np.maximum(rkctemp, 0))  # ensure non-negative
+    sigmac = sc * 0.5 * np.sqrt(np.maximum(rkctemp, 0))  # avoid negative vals
 
     # flame heat, reaction extent 
     psif1 = np.where(ftemp1 < tfstep, 0.0,
@@ -425,7 +425,7 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
     ftemp2_out = None
 
     if nfuel == 1:
-        # Extract 2-D arrays at z=0
+        # extract 2-D arrays at z=0
         sies = point_data['sies'][:, :, 0]
         rhoFuel = point_data['rhoFuel'][:, :, 0]
         rho_water = point_data['rho_water'][:, :, 0]
@@ -434,7 +434,7 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
         ftemp = np.maximum(ftemp, 300.0) 
         ftemp1_out = ftemp
 
-        # mask where flames are "active"
+        # mask where flames are active
         mask = ftemp >= 315.0
 
         # convective and radiative heat flux
@@ -454,7 +454,7 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
         )
         
         # total heat release (sum over active cells)
-        qdub_total = np.sum((q_conv + q_rad + reactFuelGas)[mask])
+        qdub_total = np.sum((q_conv + q_rad + reactFuelGas * 0.7)[mask]) # correct rFG term for units--multiplied by fuel height 
 
     elif nfuel == 2:
         # extract 2-D arrays at z=0
@@ -491,7 +491,7 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
         )
         
         # total heat release
-        qdub_total = (np.sum((q_conv1 + q_rad1 + reactFuelGas1)[mask1]) + 
+        qdub_total = (np.sum((q_conv1 + q_rad1 + reactFuelGas1 * 0.7)[mask1]) + 
                       np.sum((q_conv2 + q_rad2 + reactFuelGas2)[mask2]))
 
     else:
@@ -558,7 +558,7 @@ def store_csv(qdub, simulation_name, output_csv):
         # ensure the new qdub has the same length as previous simulations
         if len(qdub_series) != len(df):
             print("Warning: Mismatch in timestep count. Adjusting to match existing data.")
-            qdub_series = qdub_series.reindex(df.index, fill_value=0)  # Fill missing values with 0
+            qdub_series = qdub_series.reindex(df.index, fill_value=0)  # fill missing values with 0
 
         # append new simulation as a new column
         df[simulation_name] = qdub_series
