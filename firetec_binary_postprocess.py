@@ -1,4 +1,3 @@
-#!/usr/bin/python
 # from pyevtk.hl import gridToVTK
 import numpy as np
 import struct
@@ -317,13 +316,13 @@ def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2,
     c1          = 0.5
     c2          = 0.0079
     c3          = 1. 
-    hf          = 8913.48e3   # heat of reaction for simple wood (J/kg of products)
+    hf          = 8913480     # heat of reaction for wood (J/kg of products)
     thetag      = 0.75        # fraction of energy to gas 
 
     # turbulent mixing
     fcorr = 0.5
-    rkctemp = 0.2 * tkb * fcorr
-    sigmac = sc * 0.5 * np.sqrt(np.maximum(rkctemp, 0))  # avoid negative vals
+    rkctemp = 0.2 * tkb * fcorr / point_data['density'] 
+    sigmac = sc * 0.5 * np.sqrt(rkctemp)
 
     # flame heat, reaction extent 
     psif1 = np.where(ftemp1 < tfstep, 0.0,
@@ -333,31 +332,35 @@ def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2,
     psif2 = np.where(ftemp2 < tfstep, 0.0,
                      np.where(ftemp2 > (2.*(tcrit - tfstep) + tfstep), 1.0,
                               c1 * (c3 + np.vectorize(math.erf)(c2 * (ftemp2 - tcrit)))))
-
-    percHydroRemaining1 = np.maximum(0., (rhoFuel_1 - hydroThresh * rho_fuel_initial1) / 
-                                     (rho_fuel_initial1 * (1. - hydroThresh) + 1e-10))
-    percHydroRemaining2 = np.maximum(0., (rhoFuel_2 - hydroThresh * rho_fuel_initial2) / 
-                                     (rho_fuel_initial2 * (1. - hydroThresh) + 1e-10))
+    percHydroRemaining1 = np.maximum(0., (rhoFuel_1 - hydroThresh * rho_fuel_initial1[:,:,0]) / 
+                                     (rho_fuel_initial1[:,:,0] * (1. - hydroThresh)))
+    percHydroRemaining2 = np.maximum(0., (rhoFuel_2 - hydroThresh * rho_fuel_initial2[:,:,0]) / 
+                                     (rho_fuel_initial2[:,:,0] * (1. - hydroThresh)))
     
     cf1 = cfhydro * percHydroRemaining1 + cfchar * (1. - percHydroRemaining1) 
     cf2 = cfhydro * percHydroRemaining2 + cfchar * (1. - percHydroRemaining2) 
 
     # fuel consumption rate
-    slambdaof1 = rhoFuel_1 * O2 / (rhoFuel_1 / rnfuel + O2 / rno + 1e-10)**2.
-    slambdaof2 = rhoFuel_2 * O2 / (rhoFuel_2 / rnfuel + O2 / rno + 1e-10)**2.
+    slambdaof1 = rhoFuel_1 * O2 / (rhoFuel_1 / rnfuel + O2 / rno )**2.
+    slambdaof2 = rhoFuel_2 * O2 / (rhoFuel_2 / rnfuel + O2 / rno )**2.
 
     frhof1 = rnfuel * cf1 * rhoFuel_1 * O2 * sigmac * psif1 * slambdaof1 / (100. * 0.0005**2.) 
     frhof2 = rnfuel * cf2 * rhoFuel_2 * O2 * sigmac * psif2 * slambdaof2 / (100. * 0.0005**2.) 
     
     # energy release to gas 
-    hydroFactor1 = np.exp(-rno / rnfuel * psif1 * rhoFuel_1 / (O2 + 1e-10))
-    hydroFactor2 = np.exp(-rno / rnfuel * psif2 * rhoFuel_2 / (O2 + 1e-10))
+    hydroFactor1 = np.exp(-rno / rnfuel * psif1 * rhoFuel_1 / (O2))
+    hydroFactor2 = np.exp(-rno / rnfuel * psif2 * rhoFuel_2 / (O2))
 
     thetaSolid1 = percHydroRemaining1 * (1. - thetag) * hydroFactor1 + (1. - percHydroRemaining1) * thetag 
     thetaSolid2 = percHydroRemaining2 * (1. - thetag) * hydroFactor2 + (1. - percHydroRemaining2) * thetag
 
     reactFuelGas1 = (1. - thetaSolid1) * hf * frhof1  # [W/m³]
-    reactFuelGas2 = (1. - thetaSolid2) * hf * frhof2  # [W/m³]
+    reactFuelGas2 = (1. - thetaSolid2) * hf * frhof2  # [W/m³] 
+
+    # print(f"frhof1: min={frhof1.min():.2f}, max={frhof1.max():.2f}, mean={frhof1.mean():.2f}")
+    # print(f"frhof2: min={frhof2.min():.2f}, max={frhof2.max():.2f}, mean={frhof2.mean():.2f}")
+    # print(f"reactFuelGas1: min={reactFuelGas1.min():.2f}, max={reactFuelGas1.max():.2f}")
+    # print(f"reactFuelGas2: min={reactFuelGas2.min():.2f}, max={reactFuelGas2.max():.2f}")
 
     return frhof1, frhof2, reactFuelGas1, reactFuelGas2
 
