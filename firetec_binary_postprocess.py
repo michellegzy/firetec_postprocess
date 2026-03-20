@@ -495,7 +495,7 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
         
         # total heat release
         qdub_total = (np.sum((q_conv1 + q_rad1 + reactFuelGas1 * 0.7)[mask1]) + 
-                      np.sum((q_conv2 + q_rad2 + reactFuelGas2)[mask2]))
+                      np.sum((q_conv2 + q_rad2 + reactFuelGas2 * 0.7)[mask2]))
 
     else:
         raise ValueError("nfuel must be 1 or 2")
@@ -675,11 +675,15 @@ cp_solid2 = (0.25 * 4184 + 0.75 * 3000) #allc1, dry
 
 #------------------------------------------------
 
+# initialize arrays for storage 
 u_dict = []
 v_dict = []
 w_dict = []
 theta_dict = [] 
-qdub = []
+qdub = [] 
+consumption_rate_f1 = [] 
+consumption_rate_f2 = [] 
+consumption_rate_total = [] 
 
 if nfuel==1:
     ftemp = []
@@ -725,15 +729,31 @@ for i in range(initial, final, incr):
         point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, 
         rho_fuel_initial1, rho_fuel_initial2
     )
-    qdub.append(timestep_qdub)  # store heat flux value
-    
-    if nfuel == 1 and ftemp_1 is not None: 
-        ftemp.append(np.max(ftemp_1))  # store max temp
-    if nfuel == 2:
-        if ftemp_1 is not None:
-            ftemp1.append(np.max(ftemp_1))
-        if ftemp_2 is not None:
-            ftemp2.append(np.max(ftemp_2))
+    qdub.append(timestep_qdub)  # store heat flux value 
+
+    # fuel consumption rates 
+    frhof1, frhof2, reactFuelGas1, reactFuelGas2 = consumption_and_reaction_heat(
+        point_data.get('kb', np.zeros((Nx, Ny, Nz)))[:, :, 0],
+        point_data.get('O2', 0.23 * np.ones((Nx, Ny, Nz)))[:, :, 0],
+        rho_fuel_initial1, rho_fuel_initial2,
+        point_data['rhoFuel_1'][:, :, 0] if 'rhoFuel_1' in point_data else np.zeros((Nx, Ny)),
+        point_data['rhoFuel_2'][:, :, 0] if 'rhoFuel_2' in point_data else np.zeros((Nx, Ny)),
+        point_data['rho_water1'][:, :, 0] if 'rho_water1' in point_data else np.zeros((Nx, Ny)),
+        point_data['rho_water2'][:, :, 0] if 'rho_water2' in point_data else np.zeros((Nx, Ny)),
+        ftemp_1 if ftemp_1 is not None else np.zeros((Nx, Ny)),
+        ftemp_2 if ftemp_2 is not None else np.zeros((Nx, Ny))
+    ) 
+    consumption_rate_f1.append(frhof1) 
+    consumption_rate_f2.append(frhof2) 
+    consumption_rate_total.append(frhof1 + frhof2) 
+
+    # if nfuel == 1 and ftemp_1 is not None: 
+    #     ftemp.append(np.max(ftemp_1))  # store max temp
+    # if nfuel == 2:
+    #     if ftemp_1 is not None:
+    #         ftemp1.append(np.max(ftemp_1))
+    #     if ftemp_2 is not None:
+    #         ftemp2.append(np.max(ftemp_2))
 
     #if os.path.isfile(vtsfile+'.vts'): # remove old vts' 
      #   os.remove(vtsfile+'.vts')
