@@ -1,4 +1,4 @@
-# from pyevtk.hl import gridToVTK
+from pyevtk.hl import gridToVTK
 import numpy as np
 import struct
 import os.path
@@ -7,7 +7,9 @@ from h5py import File
 import matplotlib.pylab as plt 
 import pandas as pd 
 import math 
-# import os
+# import os 
+
+# np.set_printoptions(precision=2, suppress=True)
 
 # --- define input and output directories ---
 cwd           = os.getcwd()
@@ -253,7 +255,7 @@ def metrics(topofile, Nx, Ny, Nz, dx, dy, dz, a1, f0, Stretch):
   volume = np.multiply(dx,dy,Z)
   return XI, YI, ZI, volume
 
-def total_fuel_consumption(comp_out_initial, comp_out_final, Nx, Ny, Nz, Nzfuel, gas_field_names, fuel_field_names, div_by_dens):
+def fuel_consumption(comp_out_initial, comp_out_final, Nx, Ny, Nz, Nzfuel, gas_field_names, fuel_field_names, div_by_dens):
     """
     reads 'rhoFuel_1' and 'rhoFuel_2' from the given fortran binary files,
     sums them to get total fuel density at initial and final steps,
@@ -321,7 +323,7 @@ def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2,
 
     # turbulent mixing
     fcorr = 0.5
-    rkctemp = 0.2 * tkb * fcorr / point_data['density'] 
+    rkctemp = 0.2 * tkb * fcorr / point_data['density'][:, :, 0] 
     sigmac = sc * 0.5 * np.sqrt(rkctemp)
 
     # flame heat, reaction extent 
@@ -599,7 +601,7 @@ XI, YI, ZI, volume = metrics(topofile, Nx, Ny, Nz, dx, dy, dz, aa1, f0, stretch)
 # point_data.update(read_fields(fname, Nx, Ny, Nz, Nzfuel, initial, gas_field_names, fuel_field_names, div_by_dens)) 
 
 # compute initial fuel density before entering loop
-# rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = total_fuel_consumption(
+# rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = fuel_consumption(
 #     "./comp.out.1000",
 #     "./comp.out.120000",
 #     Nx, Ny, Nz, Nzfuel,
@@ -608,7 +610,7 @@ XI, YI, ZI, volume = metrics(topofile, Nx, Ny, Nz, dx, dy, dz, aa1, f0, stretch)
 #     div_by_dens
 # ) 
 
-rho_fuel_initial1, rho_fuel_initial2, rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = total_fuel_consumption(
+rho_fuel_initial1, rho_fuel_initial2, rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = fuel_consumption(
     "./comp.out.1000",
     "./comp.out.120000",
     Nx, Ny, Nz, Nzfuel,
@@ -681,16 +683,19 @@ v_dict = []
 w_dict = []
 theta_dict = [] 
 qdub = [] 
-consumption_rate_f1 = [] 
-consumption_rate_f2 = [] 
-consumption_rate_total = [] 
+consumption_max_rate_total = [] 
+avg_tot_consumption = [] 
 
 if nfuel==1:
     ftemp = []
 
 if nfuel==2:
     ftemp1 = []
-    ftemp2 = []
+    ftemp2 = [] 
+    avg_f1_consumption = [] 
+    avg_f2_consumption = [] 
+    consumption_max_rate_f1 = [] 
+    consumption_max_rate_f2 = [] 
 
 fire_front_positions = []
 spread_rates = []
@@ -729,7 +734,7 @@ for i in range(initial, final, incr):
         point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, 
         rho_fuel_initial1, rho_fuel_initial2
     )
-    qdub.append(timestep_qdub)  # store heat flux value 
+    qdub.append(timestep_qdub) 
 
     # fuel consumption rates 
     frhof1, frhof2, reactFuelGas1, reactFuelGas2 = consumption_and_reaction_heat(
@@ -743,9 +748,24 @@ for i in range(initial, final, incr):
         ftemp_1 if ftemp_1 is not None else np.zeros((Nx, Ny)),
         ftemp_2 if ftemp_2 is not None else np.zeros((Nx, Ny))
     ) 
-    consumption_rate_f1.append(frhof1) 
-    consumption_rate_f2.append(frhof2) 
-    consumption_rate_total.append(frhof1 + frhof2) 
+
+    max_fc_f1 = np.max(frhof1) if frhof1 is not None else 0
+    max_fc_f2 = np.max(frhof2) if frhof2 is not None else 0 
+    max_fc_total = np.max(frhof1 + frhof2) if (frhof1 is not None and frhof2 is not None) else 0 
+    avg_f1_consumption.append(np.mean(frhof1) if frhof1 is not None else 0)
+    avg_f2_consumption.append(np.mean(frhof2) if frhof2 is not None else 0) 
+    avg_tot_consumption.append(np.mean(frhof1 + frhof2) if (frhof1 is not None and frhof2 is not None) else 0) 
+
+    consumption_max_rate_f1 = np.append(consumption_max_rate_f1, max_fc_f1) 
+    consumption_max_rate_f2 = np.append(consumption_max_rate_f2, max_fc_f2) 
+    consumption_max_rate_total = np.append(consumption_max_rate_total, max_fc_total) 
+
+    # consumption_max_rate_f1 = np.array(consumption_max_rate_f1)
+    # consumption_max_rate_f2 = np.array(consumption_max_rate_f2)
+    # consumption_max_rate_total = np.array(consumption_max_rate_total)
+
+    f1fc_normalized = np.divide(consumption_max_rate_f1, consumption_max_rate_total, where=consumption_max_rate_total!=0, out = np.zeros_like(consumption_max_rate_f1, dtype=float)) 
+    f2fc_normalized = np.divide(consumption_max_rate_f2, consumption_max_rate_total, where=consumption_max_rate_total!=0, out = np.zeros_like(consumption_max_rate_f2, dtype=float)) 
 
     # if nfuel == 1 and ftemp_1 is not None: 
     #     ftemp.append(np.max(ftemp_1))  # store max temp
@@ -884,7 +904,23 @@ max_flame_depth_overall = max(depth for _, depth in flame_depths)
 max_depth_timestep = next(i for i, (_, depth) in enumerate(flame_depths) if depth == max_flame_depth_overall)
 
 print(f"maximum flame depth was {max_flame_depth_overall:.2f} meters")
-#print(f"occurred at timestep {max_depth_timestep}")
+#print(f"occurred at timestep {max_depth_timestep}") 
+
+qdub = np.array(qdub) 
+consumption_max_rate_f1 = np.array(consumption_max_rate_f1) 
+consumption_max_rate_f2 = np.array(consumption_max_rate_f2) 
+consumption_max_rate_total = np.array(consumption_max_rate_total) 
+avg_f1_consumption = np.array(avg_f1_consumption) 
+avg_f2_consumption = np.array(avg_f2_consumption) 
+avg_tot_consumption = np.array(avg_tot_consumption) 
+
+# print(f'qdub: {qdub}') 
+# print(f'consumption_rate_f1: {consumption_max_rate_f1}')
+# print(f'consumption_rate_f2: {consumption_max_rate_f2}')
+# print(f'consumption_rate_total: {consumption_max_rate_total}') 
+# print(f'avg consumption rate f1: {avg_f1_consumption}')
+# print(f'avg consumption rate f2: {avg_f2_consumption}')
+# print(f'avg total consumption rate: {avg_tot_consumption}') 
 
 # plot q" 
 #print('timestep_qdub : ', timestep_qdub)
@@ -893,4 +929,8 @@ print(f"maximum flame depth was {max_flame_depth_overall:.2f} meters")
 
 # store qdubs across all sims
 simulation_name = "0s1c1"  # Unique identifier for this run
-# store_csv(qdub, simulation_name, csv_outpath) #output_csv="heat_flux_results.csv")
+# store_csv(qdub, simulation_name, csv_outpath) #output_csv="heat_flux_results.csv") 
+
+# print(f'consumption_max_rate_f1: {consumption_max_rate_f1}') 
+# print(f'consumption_max_rate_f2: {consumption_max_rate_f2}') 
+# print(f'consumption_max_rate_total: {consumption_max_rate_total}') 
