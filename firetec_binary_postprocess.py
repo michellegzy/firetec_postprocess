@@ -1,50 +1,48 @@
 from pyevtk.hl import gridToVTK
 import numpy as np
 import struct
-import os.path
+import os #.path
 import sys
 from h5py import File
 import matplotlib.pylab as plt 
 import pandas as pd 
 import math 
-# import os 
-
-# np.set_printoptions(precision=2, suppress=True)
 
 # --- define input and output directories ---
-cwd           = os.getcwd()
-indir         = cwd           # pathfile to comp.outs 
-readfilename  = '/comp.out.'  # name of comp.out files
-outdir        = './postprocessing/'          # output directory 
-outname       = 'vtk_output.' # output name to name vtk
-gridlist_pf   = cwd            # pathfile to the gridlist 
-csv_outpath = './hflux_data.csv' #~/Desktop/het_fuels_proj/heat_flux_data.csv'
+cwd             = os.getcwd()
+indir           = cwd               # pathfile to comp.outs 
+readfilename    = '/comp.out.'      # name of comp.out files
+outdir          = './postprocessing/'          # output directory 
+outname         = 'vtk_output.'     # output name to name vtk
+gridlist_pf     = cwd               # pathfile to the gridlist 
+csv_root_dir    = '/Users/michellegee/LANL/het_fuels/csvs/' 
+simulation_name = "0s1c1"           # unique identifier for this run 
 
 # --- define time, fuel, and firerun parameters ---
-initial = 1000 #4000 # time of ignition
-final = 120001
-incr  = 1000
-nfuel = 2 # change to match your number of fuel types
-fields_to_write = [] # define what fields to write OR leave empty for full FIRETEC output
+initial         = 1000  #4000       # time of ignition
+final           = 120001
+incr            = 1000
+nfuel           = 2                 # change to match your number of fuel types
+fields_to_write = []                # define what fields to write OR leave empty for full FIRETEC output
 
 # --- define domain size and parameters ---
-Nx = 200 
-Ny = 100 
-Nz = 41
-Nzfuel = 1
-dx = 2.0
-dy = 2.0
-dz = 15.0
-aa1 = 0.1
-f0 = 0.0
-stretch = 2 #0=no vertical stretch, 2=cubic, 1=not avaible
-topofile = '' #topo input here, leave empty for flat 
+Nx              = 200 
+Ny              = 100 
+Nz              = 41
+Nzfuel          = 1
+dx              = 2.0
+dy              = 2.0
+dz              = 15.0
+aa1             = 0.1
+f0              = 0.0
+stretch         = 2                 # 0=no vertical stretch, 2=cubic, 1=not avaible
+topofile        = ''                # topo input here, leave empty for flat 
 
 # ------- cts and vars ----------- 
-h = 34.21 # [w/m2K] 
-T_inf = 300 # K
-epsilon = 0.96 # grass emissivity 
-sigma = 5.67 * 10 ** -8 #[w/m2K4]
+h              = 34.21              # [w/m2K] 
+T_inf          = 300                # [K]
+epsilon        = 0.96               # grass emissivity 
+sigma          = 5.67 * 10 ** -8    # [w/m2K4]
 
 #======================= DEFINE FUNCTIONS =========================                                                                                            
 
@@ -54,15 +52,15 @@ def formOutputList(pf,fields_to_write,nfuel):
         gl = open(fn)
         lines = gl.readlines()
         
-        # Gas velocities and temperature 
+        # gas velocities and temperature 
         gas_field_names = ["u", "v", "w", "theta"]
 
-        # Turbulence parameters
+        # turbulence parameters
         kab = [s for s in lines if "iturb" in s]
         if (any('2' in s for s in kab)):
             gas_field_names.extend(["ka","kb"])
         
-        # Emissions species
+        # emissions species
         emit = [s for s in lines if "iemissions" in s]
         if (any('1' in s for s in emit)) | (any('2' in s for s in emit)):
             nemit_ch = [s for s in lines if "nEmit" in s]
@@ -83,7 +81,8 @@ def formOutputList(pf,fields_to_write,nfuel):
                 else:
                     gas_field_names.extend(["O2"])
             else:
-                gas_field_names.extend(["O2"])
+                gas_field_names.extend(["O2"]) 
+                # broken: 
 #        if (any('1' in s for s in emit)) | (any('2' in s for s in emit)):
 #            naero_ch = [s for s in lines if "nAero" in s]
 #            nmaero_ch = [s for s in lines if "nMAero" in s]
@@ -97,15 +96,14 @@ def formOutputList(pf,fields_to_write,nfuel):
         if any('3' in s for s in emit): 
             gas_field_names.extend(['M0','M1'])
 
-        # Mixture Fraction
+        # mixture fraction
         mixfrac = [s for s in lines if "inonlocal" in s]
         if any('1' in s for s in mixfrac):
             gas_field_names.extend(['mixfrac'])
 
-        # Gas Density
         gas_field_names.append('density')
 
-        # Fuel Arrays
+        # fuel arrays
         ifuel = [s for s in lines if "nfuel" in s] # look for string 'nfuel' in GL
         if (any('=' in s for s in ifuel)): # if there is an = sign: 
             nfuel = int(ifuel[0].split()[2]) # convert the third index to an integer (exp. nfuel = 2, converts '2' to int)
@@ -135,12 +133,10 @@ def formOutputList(pf,fields_to_write,nfuel):
 
 def readfield(infile, Nx, Ny, Nz):
     raw_data = infile.read(Nx * Ny * Nz * 4)  # read binary data
-    array = np.frombuffer(raw_data, dtype=np.float32)  # converp to np array
-
-    #print(f"Expected size: {Nx*Ny*Nz}, Read size: {array.size}") # make sure array sizes are as expected
+    array = np.frombuffer(raw_data, dtype=np.float32)  # convert to np array
 
     if array.size != Nx * Ny * Nz:
-        raise ValueError(f"File does not contain enough data: Expected {Nx*Ny*Nz}, got {array.size}") # perhaps they are not!!!
+        raise ValueError(f"File does not contain enough data: Expected {Nx*Ny*Nz}, got {array.size}") 
 
     return array.reshape((Nx, Ny, Nz), order='F')  # reshape with fortran order
     #return np.frombuffer(infile.read(Nx*Ny*Nz*4), 'f').reshape((Nx,Ny,Nz),order='F') # single line from original function
@@ -167,9 +163,9 @@ def read_fields(fname, Nx, Ny, Nz, Nzfuel, number, gas_field_names, fuel_field_n
             outputs[fuel_field_names[ii]][:, :, :Nzfuel] = FuelTemp
             infile.read(4)
             
-        for ii in range(len(div_by_dens)):  # Loop over each field that needs density normalization
-            the_field = div_by_dens[ii]  # Get the field name
-            outputs[the_field] = np.divide(outputs[the_field], outputs["density"])  # Element-wise division
+        for ii in range(len(div_by_dens)):  # loop over each field that needs density normalization
+            the_field = div_by_dens[ii]  # get the field name
+            outputs[the_field] = np.divide(outputs[the_field], outputs["density"])  # element-wise division
             
     return outputs
 
@@ -229,7 +225,7 @@ def metrics(topofile, Nx, Ny, Nz, dx, dy, dz, a1, f0, Stretch):
   # --- using hyperbolic tangent stretching ---
   if Stretch == 1:
       print('using hyperbolic tangent stretching')
-      print('this part does not work yet! exiting!')
+      print('hyperbolic tangent stretching does not work yet-- exiting')
       sys.exit()
 
   # --- using cubic polynomial stretching ---
@@ -246,7 +242,7 @@ def metrics(topofile, Nx, Ny, Nz, dx, dy, dz, a1, f0, Stretch):
                   ZI[i,j,k] = (a3*(z[k]**3.0)+a2*(z[k]**2.0)+a1*z[k])*(zedge[Nz]-zedge[0])/zedge[Nz]+zedge[0]
 
       if os.path.isfile(topofile):
-          print("Modifying coordinate to be terrain following!")
+          print("modifying coordinate to be terrain following")
           for i in range(Nx):
               for j in range(Ny):
                   for k in range(Nz):
@@ -299,10 +295,10 @@ def fuel_consumption(comp_out_initial, comp_out_final, Nx, Ny, Nz, Nzfuel, gas_f
 
 def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2, rhoFuel_1, rhoFuel_2, rho_water1, rho_water2, ftemp1, ftemp2): 
     """
-    Compute fuel consumption rate and chemical heat release.
-    Works on arrays (entire grid at z=0).
+    compute fuel consumption rate and chemical heat release.
+    works on arrays (entire grid at z=0).
     
-    Returns:
+    returns:
     - frhof1, frhof2: fuel consumption rates [kg/m³/s]
     - reactFuelGas1, reactFuelGas2: heat release rate to gas [W/m³]
     """
@@ -359,18 +355,13 @@ def consumption_and_reaction_heat(tkb, O2, rho_fuel_initial1, rho_fuel_initial2,
     reactFuelGas1 = (1. - thetaSolid1) * hf * frhof1  # [W/m³]
     reactFuelGas2 = (1. - thetaSolid2) * hf * frhof2  # [W/m³] 
 
-    # print(f"frhof1: min={frhof1.min():.2f}, max={frhof1.max():.2f}, mean={frhof1.mean():.2f}")
-    # print(f"frhof2: min={frhof2.min():.2f}, max={frhof2.max():.2f}, mean={frhof2.mean():.2f}")
-    # print(f"reactFuelGas1: min={reactFuelGas1.min():.2f}, max={reactFuelGas1.max():.2f}")
-    # print(f"reactFuelGas2: min={reactFuelGas2.min():.2f}, max={reactFuelGas2.max():.2f}")
-
     return frhof1, frhof2, reactFuelGas1, reactFuelGas2
 
 def fire_spread(point_data, Nx, Ny, dx, initial_fuel_density, time, previous_position_x, previous_time):
     """
     computes fire spread rate at a single timestep.
 
-    Parameters:
+    params:
     - point_data: dictionary containing fuel data at the current timestep.
     - Nx, Ny: grid dimensions.
     - dx: grid cell size (meters).
@@ -379,7 +370,7 @@ def fire_spread(point_data, Nx, Ny, dx, initial_fuel_density, time, previous_pos
     - previous_position_x: fire front position from the last timestep.
     - previous_time: previous timestep.
 
-    Returns:
+    returns:
     - fire_front_x: fire front position (meters).
     - spread_rate: fire spread rate (m/s) for this timestep.
     """
@@ -397,14 +388,6 @@ def fire_spread(point_data, Nx, Ny, dx, initial_fuel_density, time, previous_pos
         if np.any(total_fuel[x, :, 0] < 0.95 * initial_fuel_density): 
             fire_front_x = (x + 1) * dx  # track fire front at leading edge of burned cell, then convert index to meters 
             
-            # current_cell_theta = point_data["theta"][x, :, 0].mean()  # avg theta across all y for this x
-            # previous_cell_theta = point_data["theta"][x-1, :, 0].mean() if x > 0 else None  # average theta for previous x, if it exists            
-            # print(f'fire front at x = {x}')
-            # print(f'theta at fire cell: {current_cell_theta:.2f}')
-            # if previous_cell_theta is not None:
-            #     print(f'theta at previous cell: {previous_cell_theta:.2f}')
-            # else:
-            #     print('theta at previous cell: N/A')
             break  
 
 
@@ -418,10 +401,10 @@ def fire_spread(point_data, Nx, Ny, dx, initial_fuel_density, time, previous_pos
 
 def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1, rho_fuel_initial2):
     """
-    Compute total heat flux for z=0 across the grid.
-    Includes convective, radiative, and chemical reaction heat.
+    compute total heat flux for z=0 across the grid.
+    includes convective, radiative, and chemical reaction heat.
     
-    Returns:
+    returns:
     - qdub_total: total heat flux [W]
     - ftemp1, ftemp2: fuel temperatures (for tracking)
     """
@@ -430,7 +413,7 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
     ftemp2_out = None
 
     if nfuel == 1:
-        # extract 2-D arrays at z=0
+        # extract 2D arrays at z=0
         sies = point_data['sies'][:, :, 0]
         rhoFuel = point_data['rhoFuel'][:, :, 0]
         rho_water = point_data['rho_water'][:, :, 0]
@@ -462,7 +445,7 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
         qdub_total = np.sum((q_conv + q_rad + reactFuelGas * 0.7)[mask]) # correct rFG term for units--multiplied by fuel height 
 
     elif nfuel == 2:
-        # extract 2-D arrays at z=0
+        # extract 2D arrays at z=0
         sies1 = point_data['sies1'][:, :, 0]
         sies2 = point_data['sies2'][:, :, 0]
         rhoFuel_1 = point_data['rhoFuel_1'][:, :, 0]
@@ -506,16 +489,16 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
 
 def flame_depth(point_data, Nx, Ny, fire_front_x, dx):
     """
-    Detects flame presence across the x-y grid at a given z-slice.
-    Calculates flame depth from fire front.
+    detects flame presence across the x-y grid at a given z-slice.
+    calculates flame depth from fire front.
 
-    Parameters:
+    params:
     - point_data (dict): dictionary of field data (including 'O2' and 'theta').
     - Nx, Ny (int): grid dimensions.
     - fire_front_x (float): x-position of the fire front in meters.
     - dx (float): grid cell size in meters.
 
-    Returns:
+    returns:
     - flame_map (2D np.array): boolean map of flame presence (shape: Nx x Ny).
     - flame_count (int): number of cells where flames are detected.
     - max_flame_depth (float): maximum flame depth in meters.
@@ -529,7 +512,6 @@ def flame_depth(point_data, Nx, Ny, fire_front_x, dx):
 
     for y in range(Ny): 
         for x in range(fire_front_index, -1, -1):  # start from fire front, move backwards
-            # if point_data["O2"][x, y, 0] <= 0.22 and point_data["theta"][x, y, 0] >= 325: 
             if point_data["theta"][x,y,0] >= 325: 
                 flame_map[x, y] = True
                 flame_count += 1
@@ -540,46 +522,119 @@ def flame_depth(point_data, Nx, Ny, fire_front_x, dx):
     
     return flame_map, flame_count, max_flame_depth
 
-def store_csv(qdub, simulation_name, output_csv): 
+def ensure_csv_directory():
+    """create the CSV output directory if it doesn't exist"""
+    if not os.path.exists(csv_root_dir):
+        os.makedirs(csv_root_dir)
+        print(f"created CSV directory: {csv_root_dir}") 
+
+def store_run_csv(simulation_name, **arrays): 
     """
-    stores desired array as csv.
+    store multiple arrays for a single run in one CSV file.
     
-    Parameters:
-    - qdub (change to desired corresponding array/name): list or numpy array of values for each timestep.
-    - simulation_name: string identifier for the simulation (used as the column header).
-    - output_csv: file path to store data.
+    params:
+    - simulation_name: string identifier for the simulation (e.g., '0s1c1')
+    - **arrays: keyword arguments where key=column_name, value=array/list
+    
+    ex. usage:
+        store_run_csv('0s1c1', 
+                      qdub=qdub, 
+                      fire_intensity=fire_intensity,
+                      fuel_consumption=fuel_consumption,
+                      spread_rate=spread_rates)
     """
+    ensure_csv_directory()
+    
+    # create df from all arrays
+    df = pd.DataFrame(arrays)
+    
+    # add timestep column as first column
+    df.insert(0, 'time [s]', range(1, 1200)) # 1, len(df) + 1))
+    
+    # save to CSV; name after current simulation
+    output_path = os.path.join(csv_root_dir, f'{simulation_name}.csv')
+    df.to_csv(output_path, index=False)
+    
+    print(f"stored {len(arrays)} arrays for run '{simulation_name}' in {output_path}")
+    return output_path
 
-    # convert `qdub` into a Pandas Series
-    qdub_series = pd.Series(qdub, name=simulation_name)
-
-    # check if csv already exists
-    #if not os.path.exists(output_csv):
-        #os.make(output_csv)
-    if os.path.exists(csv_outpath): #output_csv):
-        # if file exists, read into a dataframe
-        df = pd.read_csv(csv_outpath, index_col=0) #output_csv, index_col=0)
-
-        # ensure the new qdub has the same length as previous simulations
-        if len(qdub_series) != len(df):
-            print("Warning: Mismatch in timestep count. Adjusting to match existing data.")
-            qdub_series = qdub_series.reindex(df.index, fill_value=0)  # fill missing values with 0
-
-        # append new simulation as a new column
-        df[simulation_name] = qdub_series
-
+def append_to_metric_csv(metric_name, simulation_name, data):
+    """
+    append a single metric (e.g., 'qdub') from one simulation to a master CSV.
+    ea. col represents a different simulation run.
+    
+    params:
+    - metric_name: name of the metric (e.g., 'qdub', 'fire_intensity')
+    - simulation_name: string identifier for this run (e.g., '0s1c1')
+    - data: list or numpy array of values for this metric
+    
+    ex. usage:
+        append_to_metric_csv('qdub', '0s1c1', qdub)
+        append_to_metric_csv('fuel_consumption', '0s1c1', consumption)
+    """
+    ensure_csv_directory()
+    
+    # path to the metric-specific CSV
+    metric_csv_path = os.path.join(csv_root_dir, f'{metric_name}.csv')
+    
+    # convert data to pandas series
+    data_series = pd.Series(data, name=simulation_name)
+    
+    if os.path.exists(metric_csv_path):
+        # read existing CSV
+        df = pd.read_csv(metric_csv_path, index_col=0)
+        
+        # check for length mismatch
+        if len(data_series) != len(df):
+            print(f"Warning: {simulation_name} has {len(data_series)} timesteps, "
+                  f"but {metric_name}.csv has {len(df)} timesteps. adjusting...")
+            data_series = data_series.reindex(df.index, fill_value=0)
+        
+        # add new column
+        df[simulation_name] = data_series
     else:
-        # if the file does not exist, create a new dataframe
-        df = pd.DataFrame({simulation_name: qdub_series})
+        # create new df
+        df = pd.DataFrame({simulation_name: data_series})
+        
+        # add timestep index
+        df.insert(0, 'time [s]', range(1, 1200)) #len(data_series) + 1))
+        df.set_index('time [s]', inplace=True)
+    
+    # save updated CSV
+    df.to_csv(metric_csv_path, index=True)
+    
+    print(f"appended '{simulation_name}' to {metric_csv_path}")
+    return metric_csv_path
 
-        # add a timestep index column
-        df.insert(0, "Timestep", range(1, len(qdub) + 1))  # ensures the first column is the timestep
+def store_all_data(simulation_name, metrics_dict):
+    """
+    store desired data in two formats: one per sim, one per type.
+    
+    params:
+    - simulation_name: string identifier (e.g., '0s1c1')
+    - metrics_dict: dictionary where keys are metric names, values are arrays
+    
+    ex. usage:
+        store_all_data('0s1c1', {
+            'qdub': qdub,
+            'fire_intensity': fire_intensity,
+            'fuel_consumption': fuel_consumption,
+            'spread_rate': spread_rates
+        })
+    
+    this will:
+    1. create 0s1c1.csv with all metrics as columns
+    2. append to qdub.csv, fire_intensity.csv, etc. with this run as a column
+    """
+    # store all metrics for this run in one CSV
+    store_run_csv(simulation_name, **metrics_dict)
+    
+    # append each metric to its respective master CSV
+    for metric_name, data in metrics_dict.items():
+        append_to_metric_csv(metric_name, simulation_name, data)
+    
+    print(f"\ncompleted storage for simulation '{simulation_name}'")
 
-    # save the updated dataframe to csv
-    #df.to_csv(output_csv)
-    df.to_csv(csv_outpath, mode='w', index=True)
-
-    print(f"heat flux data for simulation '{simulation_name}' saved to {output_csv}.")
 
 # ---------------------- start program ------------------------ 
 
@@ -590,7 +645,6 @@ if(not('fields_to_write' in locals())):
   fields_to_write = []
 if(not('fields_to_write' in globals())):
   print('not in globals')
-#print('fields_to_write' in globals())
 
 if not os.path.exists(outdir):  
     os.makedirs(outdir)
@@ -601,15 +655,6 @@ XI, YI, ZI, volume = metrics(topofile, Nx, Ny, Nz, dx, dy, dz, aa1, f0, stretch)
 # point_data.update(read_fields(fname, Nx, Ny, Nz, Nzfuel, initial, gas_field_names, fuel_field_names, div_by_dens)) 
 
 # compute initial fuel density before entering loop
-# rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = fuel_consumption(
-#     "./comp.out.1000",
-#     "./comp.out.120000",
-#     Nx, Ny, Nz, Nzfuel,
-#     gas_field_names,
-#     fuel_field_names,
-#     div_by_dens
-# ) 
-
 rho_fuel_initial1, rho_fuel_initial2, rho_fuel_tot_initial, rho_fuel_tot_final, initial_fuel_density, consumption = fuel_consumption(
     "./comp.out.1000",
     "./comp.out.120000",
@@ -699,26 +744,11 @@ if nfuel==2:
 
 fire_front_positions = []
 spread_rates = []
-previous_position_x = None # change from logical to ==0?
+previous_position_x = None 
 previous_time = None
 flame_maps = []
 flame_counts = []
-flame_depths = []
-        
-# for i in range(initial, final, incr): 
-#     filename = fname+str(i)
-#     vtsfile = outdir+outname+str(i)
-#     if not os.path.exists(filename):
-#         continue  # skip missing files
-    
-#     f = open(filename, 'rb')
-#     point_data.update(read_fields(fname, Nx, Ny, Nz, Nzfuel, i, gas_field_names, fuel_field_names, div_by_dens))
-#     timestep_qdub = heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel) #  ftemp1,ftemp2
-#     if nfuel == 1: 
-#         ftemp += ftemp
-#     if nfuel == 2:
-#         ftemp1 += ftemp1 
-#         ftemp2 += ftemp2 
+flame_depths = [] 
 
 for i in range(initial, final, incr): 
     filename = fname+str(i)
@@ -760,23 +790,8 @@ for i in range(initial, final, incr):
     consumption_max_rate_f2 = np.append(consumption_max_rate_f2, max_fc_f2) 
     consumption_max_rate_total = np.append(consumption_max_rate_total, max_fc_total) 
 
-    # consumption_max_rate_f1 = np.array(consumption_max_rate_f1)
-    # consumption_max_rate_f2 = np.array(consumption_max_rate_f2)
-    # consumption_max_rate_total = np.array(consumption_max_rate_total)
-
     f1fc_normalized = np.divide(consumption_max_rate_f1, consumption_max_rate_total, where=consumption_max_rate_total!=0, out = np.zeros_like(consumption_max_rate_f1, dtype=float)) 
     f2fc_normalized = np.divide(consumption_max_rate_f2, consumption_max_rate_total, where=consumption_max_rate_total!=0, out = np.zeros_like(consumption_max_rate_f2, dtype=float)) 
-
-    # if nfuel == 1 and ftemp_1 is not None: 
-    #     ftemp.append(np.max(ftemp_1))  # store max temp
-    # if nfuel == 2:
-    #     if ftemp_1 is not None:
-    #         ftemp1.append(np.max(ftemp_1))
-    #     if ftemp_2 is not None:
-    #         ftemp2.append(np.max(ftemp_2))
-
-    #if os.path.isfile(vtsfile+'.vts'): # remove old vts' 
-     #   os.remove(vtsfile+'.vts')
         
     u_dict.append(point_data["u"].copy()) 
     v_dict.append(point_data["v"].copy()) 
@@ -798,11 +813,8 @@ for i in range(initial, final, incr):
         previous_position_x = fire_front_x
         previous_time = i*0.001
         
-        # flame depth/detection/map
-        # print(f"timestep {i}: fire front at {fire_front_x} m")  # debug print
-        
+        # flame depth/detection/map        
         flame_map, flame_count, max_flame_depth = flame_depth(point_data, Nx, Ny, fire_front_x, dx)
-        # print(f"timestep {i}: flame count: {flame_counts}, depth: {flame_depths} m")  # debug print
         
         flame_maps.append(flame_map)
         flame_counts.append((i, flame_count))  # save with timestep info 
@@ -855,35 +867,22 @@ for i in range(initial, final, incr):
     # call function to make VTKs
     #gridToVTK(vtsfile, XI, YI, ZI, pointData = select_data(point_data, fields_to_write)) # ,fuel_field_names)) 
 
-u_array = np.array(u_dict)
-v_array = np.array(v_dict)
-w_array = np.array(w_dict)
-theta_array = np.array(theta_dict)
-
-# calculate min/max across all stored timesteps
-u_max = np.max(u_array)
-u_min = np.min(u_array)
-#print(f'u min: {u_min:.3f} u max: {u_max:.3f}') 
-
-v_max = np.max(v_array)
-v_min = np.min(v_array)
-#print(f'v min: {v_min:.3f} v max: {v_max:.3f}') 
-
-w_max = np.max(w_array)
-w_min = np.min(w_array)
-#print(f'w min: {w_min:.3f} w max: {w_max:.3f}') 
-
-theta_max = np.max(theta_array)
-theta_min = np.min(theta_array)
-#print(f'theta min: {theta_min:.3f} theta max: {theta_max:.3f}') 
-
-# if nfuel==1:
-#     print(f'max fuel temp: {np.max(ftemp):.3f}')
-
-# # print(f'ftemp1: ', ftemp1) 
-# if nfuel==2: 
-#     print(f'fuel_temp1_array max: {np.max(ftemp1):.3f}') 
-#     print(f'fuel_temp2_array max: {np.max(ftemp2):.3f}') 
+# convert lists to arrays 
+u_array = np.array(u_dict) 
+v_array = np.array(v_dict) 
+w_array = np.array(w_dict) 
+theta_array = np.array(theta_dict) 
+qdub = np.array(qdub) 
+consumption_max_rate_f1 = np.array(consumption_max_rate_f1) 
+consumption_max_rate_f2 = np.array(consumption_max_rate_f2) 
+consumption_max_rate_total = np.array(consumption_max_rate_total) 
+avg_f1_consumption = np.array(avg_f1_consumption) 
+avg_f2_consumption = np.array(avg_f2_consumption) 
+avg_tot_consumption = np.array(avg_tot_consumption) 
+f1fc_normalized = np.array(f1fc_normalized) 
+f2fc_normalized = np.array(f2fc_normalized) 
+spread_rates = np.array(spread_rates) 
+flame_depths = np.array(flame_depths) # max flame depth/timetep [m] 
 
 # compute overall fire spread rate
 overall_spread_rate = np.mean([rate for _, rate in spread_rates]) if spread_rates else 0
@@ -894,43 +893,26 @@ print(f"fuel consumption (f/i): {consumption:.3f}")
 # print(f"flame count: {flame_counts} cells.")
 # print(f"max local depths (step, local max): {flame_depths}") 
 
-# max_depth_timestep = np.argmax(flame_depths[:, 1])
-# max_flame_depth_overall = flame_depths[max_depth_timestep, 1]
-
-# print(f"maximum overall flame depth: {max_flame_depth_overall:.2f} meters")
-# print(f"at timestep {max_depth_timestep}")
-
 max_flame_depth_overall = max(depth for _, depth in flame_depths)
 max_depth_timestep = next(i for i, (_, depth) in enumerate(flame_depths) if depth == max_flame_depth_overall)
 
 print(f"maximum flame depth was {max_flame_depth_overall:.2f} meters")
-#print(f"occurred at timestep {max_depth_timestep}") 
-
-qdub = np.array(qdub) 
-consumption_max_rate_f1 = np.array(consumption_max_rate_f1) 
-consumption_max_rate_f2 = np.array(consumption_max_rate_f2) 
-consumption_max_rate_total = np.array(consumption_max_rate_total) 
-avg_f1_consumption = np.array(avg_f1_consumption) 
-avg_f2_consumption = np.array(avg_f2_consumption) 
-avg_tot_consumption = np.array(avg_tot_consumption) 
-
-# print(f'qdub: {qdub}') 
-# print(f'consumption_rate_f1: {consumption_max_rate_f1}')
-# print(f'consumption_rate_f2: {consumption_max_rate_f2}')
-# print(f'consumption_rate_total: {consumption_max_rate_total}') 
-# print(f'avg consumption rate f1: {avg_f1_consumption}')
-# print(f'avg consumption rate f2: {avg_f2_consumption}')
-# print(f'avg total consumption rate: {avg_tot_consumption}') 
 
 # plot q" 
 #print('timestep_qdub : ', timestep_qdub)
 #qdub_plt = plt.plot(qdub) #,origin='lower')
 #plt.show() 
 
-# store qdubs across all sims
-simulation_name = "0s1c1"  # Unique identifier for this run
-# store_csv(qdub, simulation_name, csv_outpath) #output_csv="heat_flux_results.csv") 
-
-# print(f'consumption_max_rate_f1: {consumption_max_rate_f1}') 
-# print(f'consumption_max_rate_f2: {consumption_max_rate_f2}') 
-# print(f'consumption_max_rate_total: {consumption_max_rate_total}') 
+store_all_data(simulation_name, {
+    'qdub': qdub,
+    'consumption_max_rate_f1': consumption_max_rate_f1,
+    'consumption_max_rate_f2': consumption_max_rate_f2,
+    'consumption_max_rate_total': consumption_max_rate_total,
+    'avg_f1_consumption': avg_f1_consumption,
+    'avg_f2_consumption': avg_f2_consumption,
+    'avg_tot_consumption': avg_tot_consumption,
+    'f1fc_normalized': f1fc_normalized,
+    'f2fc_normalized': f2fc_normalized,
+    'spread_rates': [rate for _, rate in spread_rates] if spread_rates else [],
+    'flame_counts': [count for _, count in flame_counts] if flame_counts else []
+}) 
