@@ -872,21 +872,12 @@ overall_spread_rate = np.mean([rate for _, rate in spread_rates]) if spread_rate
 print(f"overall fire spread rate: {overall_spread_rate:.3f} m/s")
 print(f"fuel consumption (f/i): {consumption:.3f}") 
 
-# flame depth etc
-# print(f"flame count: {flame_counts} cells.")
-# print(f"max local depths (step, local max): {flame_depths}") 
-
 max_flame_depth_overall = max(depth for _, depth in flame_depths)
 max_depth_timestep = next(i for i, (_, depth) in enumerate(flame_depths) if depth == max_flame_depth_overall)
 flame_depth_values = [pair[1] for pair in flame_depths] 
 spread_rate_values = [pair[1] for pair in spread_rates] 
 
 print(f"maximum flame depth was {max_flame_depth_overall:.2f} meters")
-
-# plot q" 
-#print('timestep_qdub : ', timestep_qdub)
-#qdub_plt = plt.plot(qdub) #,origin='lower')
-#plt.show() 
 
 # convert lists to arrays 
 u_array = np.array(u_dict) 
@@ -905,9 +896,6 @@ f2fc_normalized = np.array(f2fc_normalized)
 spread_rate_values = np.array(spread_rate_values) 
 flame_depth_values = np.array(flame_depth_values) # max flame depth/timetep [m] 
 
-# print(f"fire_front_x: {fire_front_x} ") 
-# print(f"flame_depth_values: {flame_depth_values} ") 
-
 store_all_data(simulation_name, {
     'qdub': qdub,
     'consumption_max_rate_f1': consumption_max_rate_f1,
@@ -922,7 +910,3 @@ store_all_data(simulation_name, {
     'flame_depth': flame_depth_values
 }) 
 
-# print(f'spread_rate vals: {spread_rate_values}') 
-
-#[rate for _, rate in spread_rates] if spread_rates else [],
-    #'flame_counts': [count for _, count in flame_counts] if flame_counts else []
