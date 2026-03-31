@@ -577,8 +577,10 @@ def append_to_metric_csv(metric_name, simulation_name, data):
     # path to the metric-specific CSV
     metric_csv_path = os.path.join(csv_root_dir, f'{metric_name}.csv')
     
-    # convert data to pandas series
-    data_series = pd.Series(data, name=simulation_name)
+    time_index = range(10, 1201, 10) 
+    
+    # convert data to pandas series with time index
+    data_series = pd.Series(data, index=time_index, name=simulation_name)
     
     if os.path.exists(metric_csv_path):
         # read existing CSV
@@ -586,7 +588,7 @@ def append_to_metric_csv(metric_name, simulation_name, data):
         
         # check for length mismatch
         if len(data_series) != len(df):
-            print(f"Warning: {simulation_name} has {len(data_series)} timesteps, "
+            print(f"warning: {simulation_name} has {len(data_series)} timesteps, "
                   f"but {metric_name}.csv has {len(df)} timesteps. adjusting...")
             data_series = data_series.reindex(df.index, fill_value=0)
         
@@ -595,10 +597,11 @@ def append_to_metric_csv(metric_name, simulation_name, data):
     else:
         # create new df
         df = pd.DataFrame({simulation_name: data_series})
-        
-        # add timestep index
-        df.insert(0, 'time [s]', range(10, 1201, 10)) #len(data_series) + 1))
-        df.set_index('time [s]', inplace=True)
+        df.index.name = 'time [s]'
+
+        # # add timestep index
+        # df.insert(0, 'time [s]', range(10, 1201, 10)) #len(data_series) + 1))
+        # df.set_index('time [s]', inplace=True)
     
     # save updated CSV
     df.to_csv(metric_csv_path, index=True)
