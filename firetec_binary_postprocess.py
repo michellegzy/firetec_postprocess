@@ -1,7 +1,7 @@
 from pyevtk.hl import gridToVTK
 import numpy as np
 import struct
-import os #.path
+import os 
 import sys
 from h5py import File
 import matplotlib.pylab as plt 
@@ -382,20 +382,20 @@ def fire_spread(point_data, Nx, Ny, dx, initial_fuel_density, time, previous_pos
         total_fuel = point_data["rhoFuel_1"] + point_data["rhoFuel_2"] 
 
     # find fire front: first x location where fuel < 95% of initial density
-    fire_front_x = None
-
-    for x in range(Nx-1,-1,-1):
+    fire_front_x = 0. 
+    
+    for x in range(Nx-1,-1,-1): 
         if np.any(total_fuel[x, :, 0] < 0.95 * initial_fuel_density): 
-            fire_front_x = (x + 1) * dx  # track fire front at leading edge of burned cell, then convert index to meters 
-            
-            break  
+            fire_front_x = (x + 1) * dx  
+            break 
 
-
-    spread_rate = None
-    if fire_front_x is not None and previous_position_x is not None:
-        delta_x = fire_front_x - previous_position_x
-        delta_t = time - previous_time
-        spread_rate = delta_x / delta_t 
+    spread_rate = 0.
+    if fire_front_x != 0. and previous_position_x is not None:
+        if previous_position_x != 0.:
+            delta_x = fire_front_x - previous_position_x
+            delta_t = time - previous_time
+            if delta_t > 0:
+                spread_rate = delta_x / delta_t 
 
     return fire_front_x, spread_rate
 
@@ -487,13 +487,13 @@ def heat_flux(point_data, Nx, Ny, cp_solid1, cp_solid2, nfuel, rho_fuel_initial1
 
     return qdub_total, ftemp1_out, ftemp2_out
 
-def flame_depth(point_data, Nx, Ny, fire_front_x, dx):
+def flame_depth(point_data, Nx, Ny, fire_front_x, dx): #, ftemp2_out):
     """
     detects flame presence across the x-y grid at a given z-slice.
     calculates flame depth from fire front.
 
     params:
-    - point_data (dict): dictionary of field data (including 'O2' and 'theta').
+    - point_data (dict): dictionary of point data (transported).
     - Nx, Ny (int): grid dimensions.
     - fire_front_x (float): x-position of the fire front in meters.
     - dx (float): grid cell size in meters.
@@ -505,20 +505,20 @@ def flame_depth(point_data, Nx, Ny, fire_front_x, dx):
     """
     flame_map = np.zeros((Nx, Ny), dtype=bool)
     flame_count = 0
-    max_flame_depth = 0
+    max_flame_depth = 0 
 
     # convert fire_front_x from meters to grid index for looping 
     fire_front_index = int(fire_front_x / dx)
 
     for y in range(Ny): 
-        for x in range(fire_front_index, -1, -1):  # start from fire front, move backwards
-            if point_data["theta"][x,y,0] >= 325: 
+        for x in range(fire_front_index, -1, -1):  # start from fire front, move backwards 
+            if point_data["theta"][x,y,0] >= 330: # and ftemp2_out[x,y] >= 600: 
                 flame_map[x, y] = True
                 flame_count += 1
                 current_depth = (fire_front_index - x + 1) * dx # +1 to include the current cell
-                max_flame_depth = max(max_flame_depth, current_depth)
+                max_flame_depth = max(max_flame_depth, current_depth) 
             else:
-                break  # stop counting when we hit a non-flame cell
+                break 
     
     return flame_map, flame_count, max_flame_depth
 
@@ -549,7 +549,7 @@ def store_run_csv(simulation_name, **arrays):
     df = pd.DataFrame(arrays)
     
     # add timestep column as first column
-    df.insert(0, 'time [s]', range(1, 1200)) # 1, len(df) + 1))
+    df.insert(0, 'time [s]', range(10, 1201, 10)) # 1, len(df) + 1))
     
     # save to CSV; name after current simulation
     output_path = os.path.join(csv_root_dir, f'{simulation_name}.csv')
@@ -597,7 +597,7 @@ def append_to_metric_csv(metric_name, simulation_name, data):
         df = pd.DataFrame({simulation_name: data_series})
         
         # add timestep index
-        df.insert(0, 'time [s]', range(1, 1200)) #len(data_series) + 1))
+        df.insert(0, 'time [s]', range(10, 1201, 10)) #len(data_series) + 1))
         df.set_index('time [s]', inplace=True)
     
     # save updated CSV
@@ -800,7 +800,7 @@ for i in range(initial, final, incr):
 
     # fire spread 
     fire_front_x, spread_rate = fire_spread(
-        point_data, Nx, Ny, dx, initial_fuel_density, i*0.001, previous_position_x, previous_time
+        point_data, Nx, Ny, dx, initial_fuel_density, i*0.01, previous_position_x, previous_time
     )
     
     if fire_front_x is not None: 
@@ -811,14 +811,14 @@ for i in range(initial, final, incr):
 
         # update previous values
         previous_position_x = fire_front_x
-        previous_time = i*0.001
+        previous_time = i*0.01
         
         # flame depth/detection/map        
-        flame_map, flame_count, max_flame_depth = flame_depth(point_data, Nx, Ny, fire_front_x, dx)
+        flame_map, flame_count, max_flame_depth = flame_depth(point_data, Nx, Ny, fire_front_x, dx) #, ftemp_2) 
         
         flame_maps.append(flame_map)
         flame_counts.append((i, flame_count))  # save with timestep info 
-        flame_depths.append((i, max_flame_depth)) # save maximum flame depth for this timestep
+        flame_depths.append((i, max_flame_depth)) # save maximum flame depth for this timestep 
         
     # theta plot at final
     # theta_plt = plt.imshow(point_data['theta'][:,:,0].T, origin='lower', cmap='RdYlBu') #, vmin=vmin, vmax=vmax)
@@ -867,6 +867,27 @@ for i in range(initial, final, incr):
     # call function to make VTKs
     #gridToVTK(vtsfile, XI, YI, ZI, pointData = select_data(point_data, fields_to_write)) # ,fuel_field_names)) 
 
+# compute overall fire spread rate
+overall_spread_rate = np.mean([rate for _, rate in spread_rates]) if spread_rates else 0
+print(f"overall fire spread rate: {overall_spread_rate:.3f} m/s")
+print(f"fuel consumption (f/i): {consumption:.3f}") 
+
+# flame depth etc
+# print(f"flame count: {flame_counts} cells.")
+# print(f"max local depths (step, local max): {flame_depths}") 
+
+max_flame_depth_overall = max(depth for _, depth in flame_depths)
+max_depth_timestep = next(i for i, (_, depth) in enumerate(flame_depths) if depth == max_flame_depth_overall)
+flame_depth_values = [pair[1] for pair in flame_depths] 
+spread_rate_values = [pair[1] for pair in spread_rates] 
+
+print(f"maximum flame depth was {max_flame_depth_overall:.2f} meters")
+
+# plot q" 
+#print('timestep_qdub : ', timestep_qdub)
+#qdub_plt = plt.plot(qdub) #,origin='lower')
+#plt.show() 
+
 # convert lists to arrays 
 u_array = np.array(u_dict) 
 v_array = np.array(v_dict) 
@@ -881,27 +902,11 @@ avg_f2_consumption = np.array(avg_f2_consumption)
 avg_tot_consumption = np.array(avg_tot_consumption) 
 f1fc_normalized = np.array(f1fc_normalized) 
 f2fc_normalized = np.array(f2fc_normalized) 
-spread_rates = np.array(spread_rates) 
-flame_depths = np.array(flame_depths) # max flame depth/timetep [m] 
+spread_rate_values = np.array(spread_rate_values) 
+flame_depth_values = np.array(flame_depth_values) # max flame depth/timetep [m] 
 
-# compute overall fire spread rate
-overall_spread_rate = np.mean([rate for _, rate in spread_rates]) if spread_rates else 0
-print(f"overall fire spread rate: {overall_spread_rate:.3f} m/s")
-print(f"fuel consumption (f/i): {consumption:.3f}") 
-
-# flame depth etc
-# print(f"flame count: {flame_counts} cells.")
-# print(f"max local depths (step, local max): {flame_depths}") 
-
-max_flame_depth_overall = max(depth for _, depth in flame_depths)
-max_depth_timestep = next(i for i, (_, depth) in enumerate(flame_depths) if depth == max_flame_depth_overall)
-
-print(f"maximum flame depth was {max_flame_depth_overall:.2f} meters")
-
-# plot q" 
-#print('timestep_qdub : ', timestep_qdub)
-#qdub_plt = plt.plot(qdub) #,origin='lower')
-#plt.show() 
+# print(f"fire_front_x: {fire_front_x} ") 
+# print(f"flame_depth_values: {flame_depth_values} ") 
 
 store_all_data(simulation_name, {
     'qdub': qdub,
@@ -913,6 +918,11 @@ store_all_data(simulation_name, {
     'avg_tot_consumption': avg_tot_consumption,
     'f1fc_normalized': f1fc_normalized,
     'f2fc_normalized': f2fc_normalized,
-    'spread_rates': [rate for _, rate in spread_rates] if spread_rates else [],
-    'flame_counts': [count for _, count in flame_counts] if flame_counts else []
+    'spread_rates': spread_rate_values, 
+    'flame_depth': flame_depth_values
 }) 
+
+# print(f'spread_rate vals: {spread_rate_values}') 
+
+#[rate for _, rate in spread_rates] if spread_rates else [],
+    #'flame_counts': [count for _, count in flame_counts] if flame_counts else []
